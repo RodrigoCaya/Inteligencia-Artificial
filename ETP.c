@@ -17,6 +17,11 @@ struct Conf {
     char id_estudiante[50];
 };
 
+struct CBJ {
+    int *id_examenes;
+    int id_examen;
+};
+
 struct Orden {
     int id_examen;
     int cant_conflictos;
@@ -190,6 +195,7 @@ void sort_inverse(struct Orden **matriz_orden, int lines_exm){
 }
 
 int tope_examenes_aux(int id_examen1, int id_examen2, struct Stu **matriz_stu, int lines_stu){
+    //revisa si 2 examenes tienen tope
     int i,j;
     char *id_examen_stu;
     for(i=0 ; i<lines_stu ; i++){
@@ -207,11 +213,11 @@ int tope_examenes_aux(int id_examen1, int id_examen2, struct Stu **matriz_stu, i
 
 int tope_examenes(struct Node *nodo_aux, struct Node *nodo, struct Stu **matriz_stu, int lines_stu){
     if(nodo_aux->timeslot == nodo->timeslot && nodo_aux->id_examen != nodo->id_examen){
-        //se compara con sí mismo
         // printf("comparando nodo_aux y nodo: %d %d\n",nodo_aux->id_examen,nodo->id_examen);
         if(tope_examenes_aux(nodo_aux->id_examen, nodo->id_examen, matriz_stu, lines_stu) == 1){
             // printf("hay tope\n");
-            return 1;
+            //retorna la más vieja en conflicto
+            return nodo->id_examen;
         }
     }
     else{
@@ -231,18 +237,22 @@ void insertar(struct Node *nodo, struct Node *nodo_aux){
     else insertar(nodo->child, nodo_aux);
 }
 
-void backtracking(struct Node *nodo){
+int backtracking(struct Node *nodo){
     if(nodo->child == NULL){
-        printf("nodo borrado\n");
+        int timeslott = nodo->timeslot;
+        // printf("nodo borrado\n");
         nodo->parent = NULL;
         free(nodo);
+        return timeslott;
     }
     else{
         if(nodo->child->child == NULL){
-            printf("nodo hijo borrado\n");
+            int timeslott = nodo->child->timeslot;
+            // printf("nodo hijo borrado\n");
             nodo->child->parent = NULL;
             free(nodo->child);
             nodo->child = NULL;
+            return timeslott;
         }
         else{
             backtracking(nodo->child);
@@ -251,8 +261,51 @@ void backtracking(struct Node *nodo){
     }
 }
 
-void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, int lines_exm, int lines_stu){
-    int i = 0, j, flag = 1;
+int cant_saltos(struct Node *nodo, int lines_exm, int contador){
+    if(nodo == NULL){
+        return contador;
+    }
+    else{
+        // printf("lines_exm , timeslot = %d , %d\n",lines_exm,nodo->timeslot);
+            
+        contador = contador + nodo->timeslot/lines_exm;
+        contador = contador*nodo->timeslot/lines_exm;
+       
+        cant_saltos(nodo->child, lines_exm, contador);
+    }
+}
+
+// int salto_atras()
+
+struct CBJ** crear_conf_cbj(struct Exm **matriz_exm, int lines_exm){
+    // struct Exm **matriz_exm = (struct Exm **)malloc(*lines_exm * sizeof(struct Exm*));
+    struct CBJ **matriz_cbj = (struct CBJ **)malloc(lines_exm * sizeof(struct CBJ*));
+    int i,j;
+    for(i=0 ; i<lines_exm ; i++){
+        // printf("%d\n",matriz_exm[i]->id_examen);
+        struct CBJ *arreglo_cbj = (struct CBJ *)malloc(sizeof(struct CBJ));
+        arreglo_cbj->id_examenes = (int *)malloc(lines_exm * sizeof(int));
+        for(j=0 ; j<lines_exm ; j++){
+            arreglo_cbj->id_examenes[j] = 0;
+        }
+        // printf("mori\n");
+        arreglo_cbj->id_examen = matriz_exm[i]->id_examen;
+        matriz_cbj[i] = arreglo_cbj;
+    }
+    return matriz_cbj;
+}
+
+void agregar_conf_cbj(struct CBJ **matriz_cbj, int lines_exm, int id_examen1, int id_examen2){
+    int i;
+    for(i=0 ; i<lines_exm ; i++){
+        if(matriz_cbj[i]->id_examen == id_examen1){
+            matriz_cbj[i]->id_examenes[id_examen2-1] = 1;
+        }
+    }
+}
+
+void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **matriz_cbj, int lines_exm, int lines_stu, int printear){
+    int i = 0, j, k, it, tope, flag = 1, ultimo_tope = 0, soluciones = 0, look_back = 1;
     struct Node *nodo = (struct Node *)malloc(sizeof(struct Node));
     j = 1;
     //inicializar nodo
@@ -261,39 +314,84 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, int lines_exm, 
     nodo->child = NULL;
     while(flag){
         for(i ; i<lines_exm ; i++){
-            printf("(1) i,j = %d , %d\n",i,j);
+            // printf("(1) i,j = %d , %d\n",i,j);
             struct Node *nodo_aux = (struct Node *)malloc(sizeof(struct Node));
             nodo_aux->id_examen = matriz_orden[i]->id_examen;
             nodo_aux->timeslot = j;
             nodo_aux->child = NULL;
             insertar(nodo, nodo_aux);
-            if(tope_examenes(nodo_aux, nodo, matriz_stu, lines_stu)){
-                printf("hay tope\n");
-                //ver si hay que usar bt o cbj
-                // printf("entree\n");
-                // printf("nodo: %d\n", nodo_aux->id_examen);
-                backtracking(nodo);
-                i--;
-                j++;
+            tope = tope_examenes(nodo_aux,nodo,matriz_stu,lines_stu);
+            if( tope != 0 || j>lines_exm){
+                // printf("hay tope\n");
+                if(j >= lines_exm){
+                    ultimo_tope = lines_exm - i;
+                    j=1;
+                }else{
+                    //ver si hay que usar bt o cbj
+                    // printf("entree\n");
+                    // printf("nodo: %d\n", nodo_aux->id_examen);
+
+                    // if(look_back){
+                        agregar_conf_cbj(matriz_cbj,lines_exm,nodo_aux->id_examen,tope);
+                    // }else{
+                        backtracking(nodo);
+                        i--;
+                        j++;
+
+                    // }
+                }
             }else{
-                printf("no hay tope\n");
+                // printf("no hay tope\n");
                 if(i != lines_exm-1) j=1;
             }
         }
-        printf("(2) i,j = %d , %d\n", i, j);
-        printf("%d %d\n",nodo->id_examen, nodo->timeslot);
-        printf("%d %d\n",nodo->child->id_examen, nodo->child->timeslot);
-        printf("%d %d\n",nodo->child->child->id_examen, nodo->child->child->timeslot);
-        printf("%d %d\n",nodo->child->child->child->id_examen, nodo->child->child->child->timeslot);
-        printf("%d %d\n",nodo->child->child->child->child->id_examen, nodo->child->child->child->child->timeslot);
-        if(j == lines_exm){
-            flag = 0;
-        }else{
-            i--;
-            j++;
-            backtracking(nodo);
+        // if(j == lines_exm) it++;
+        soluciones++;
+
+        if(printear){
+            printf("--------------------------------------------------------\n");
+            printf("soluciones = %d\n",soluciones);
+            printf("%d %d\n",nodo->id_examen, nodo->timeslot);
+            printf("%d %d\n",nodo->child->id_examen, nodo->child->timeslot);
+            printf("%d %d\n",nodo->child->child->id_examen, nodo->child->child->timeslot);
+            printf("%d %d\n",nodo->child->child->child->id_examen, nodo->child->child->child->timeslot);
+            printf("%d %d\n",nodo->child->child->child->child->id_examen, nodo->child->child->child->child->timeslot);
+            printf("***********************************************************\n");
+            printf("%d %d %d %d\n",matriz_cbj[0]->id_examen,matriz_cbj[0]->id_examenes[0],matriz_cbj[0]->id_examenes[1],matriz_cbj[0]->id_examenes[2]);
+            printf("%d %d %d %d\n",matriz_cbj[1]->id_examen,matriz_cbj[1]->id_examenes[0],matriz_cbj[1]->id_examenes[1],matriz_cbj[1]->id_examenes[2]);
+            printf("%d %d %d %d\n",matriz_cbj[2]->id_examen,matriz_cbj[2]->id_examenes[0],matriz_cbj[2]->id_examenes[1],matriz_cbj[2]->id_examenes[2]);
+            printf("%d %d %d %d\n",matriz_cbj[3]->id_examen,matriz_cbj[3]->id_examenes[0],matriz_cbj[3]->id_examenes[1],matriz_cbj[3]->id_examenes[2]);
         }
 
+        if(j == lines_exm) it = cant_saltos(nodo, lines_exm, 0);
+        else{
+            if(ultimo_tope != 0){
+                // printf("ultimo tope\n");
+                it = ultimo_tope;
+                ultimo_tope = 0;
+                soluciones--;
+            }else{
+                it = 0;
+            }
+        } 
+        // printf("it = %d \n",it);
+        backtracking(nodo);
+        i--;
+        j++;
+        for(k = 0 ; k< it ; k++){
+            if(k == lines_exm-1){
+                // printf("SALI \n");
+                soluciones--;
+                flag = 0;
+            }else{
+                j = backtracking(nodo);
+                // printf("j = %d\n",j);
+                i--;
+                j++;
+            }
+        }
+        // printf("(2) i,j = %d , %d\n", i, j);
+        if(soluciones == 5) break;
     }
 }
 
@@ -318,35 +416,22 @@ int main() {
     struct Stu **matriz_stu;
     struct Conf **matriz_conf;
     struct Orden **matriz_orden;
+    struct CBJ **matriz_cbj;
     char **arreglo_solo_stu;
 
     matriz_exm = leer_exm(exm, &lines_exm);
     matriz_stu = leer_stu(stu, &lines_stu);
     
     arreglo_solo_stu = estudiantes(matriz_stu, lines_stu, &cant_alumnos);
-
-    
-    // nodo->data = 1;
-    // struct Node *hermano = (struct Node *)malloc(sizeof(struct Node));
-    // hermano->data = 2;
-    // nodo->next_sibling = hermano;
-    // printf("%d\n",nodo->data);
-    // printf("%d\n",nodo->next_sibling->data);
-    // if(nodo->next_sibling->next_sibling != NULL){
-    //     printf("%d\n",nodo->next_sibling->next_sibling->data);
-    // }
-    // else{
-    //     printf("NULL\n");
-    // }
-
-
     matriz_conf = conflicto(matriz_stu, lines_stu, arreglo_solo_stu, cant_alumnos);
-
     matriz_orden = examenes(matriz_exm,lines_exm);
-    
     agregar_conflicto(matriz_orden, matriz_conf, matriz_stu, lines_exm, cant_alumnos, lines_stu);
-
     sort_inverse(matriz_orden, lines_exm);
+    matriz_cbj = crear_conf_cbj(matriz_exm, lines_exm);
+    // printf("%d %d %d %d\n",matriz_cbj[0]->id_examen,matriz_cbj[0]->id_examenes[0],matriz_cbj[0]->id_examenes[1],matriz_cbj[0]->id_examenes[2]);
+    // printf("%d %d %d %d\n",matriz_cbj[1]->id_examen,matriz_cbj[1]->id_examenes[0],matriz_cbj[1]->id_examenes[1],matriz_cbj[1]->id_examenes[2]);
+    // printf("%d %d %d %d\n",matriz_cbj[2]->id_examen,matriz_cbj[2]->id_examenes[0],matriz_cbj[2]->id_examenes[1],matriz_cbj[2]->id_examenes[2]);
+    // printf("%d %d %d %d\n",matriz_cbj[3]->id_examen,matriz_cbj[3]->id_examenes[0],matriz_cbj[3]->id_examenes[1],matriz_cbj[3]->id_examenes[2]);
     
     // printf("%d %d\n",matriz_orden[0]->id_examen,matriz_orden[0]->cant_conflictos);
     // printf("%d %d\n",matriz_orden[1]->id_examen,matriz_orden[1]->cant_conflictos);
@@ -364,7 +449,7 @@ int main() {
 
     // printf("%d\n",tope_examenes(1, 2,matriz_stu,lines_stu));
 
-    grafo(matriz_orden, matriz_stu, lines_exm, lines_stu);
+    grafo(matriz_orden, matriz_stu, matriz_cbj, lines_exm, lines_stu,1);
     
     liberar_memoria(lines_exm,lines_stu,matriz_exm,matriz_stu);
     return 0;
@@ -373,8 +458,12 @@ int main() {
     //-heuristica de más conflictos primero CHECK
         //hacer una funcion que te devuelva una lista con todos los estudiantes CHECK
         //lista de conflictos CHECK
-    //-backtracking
+    //-backtracking CHECK
     //-CBJ
+        //-crear matriz de CBJ CHECK
+        //-crear un caso de prueba con fallo
+        //-probar la matriz de CBJ
+    //-output
 
 }
 //sudo apt-get install build-essential
