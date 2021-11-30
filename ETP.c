@@ -304,7 +304,7 @@ void agregar_conf_cbj(struct CBJ **matriz_cbj, int lines_exm, int id_examen1, in
     }
 }
 
-void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **matriz_cbj, int lines_exm, int lines_stu, int printear){
+void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **matriz_cbj, int lines_exm, int lines_stu, int timeslots, int printear){
     int i = 0, j, k, it, tope, flag = 1, ultimo_tope = 0, soluciones = 0, look_back = 1;
     struct Node *nodo = (struct Node *)malloc(sizeof(struct Node));
     j = 1;
@@ -321,10 +321,10 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
             nodo_aux->child = NULL;
             insertar(nodo, nodo_aux);
             tope = tope_examenes(nodo_aux,nodo,matriz_stu,lines_stu);
-            if( tope != 0 || j>lines_exm){
+            if( tope != 0 || j>timeslots){
                 // printf("hay tope\n");
-                if(j >= lines_exm){
-                    ultimo_tope = lines_exm - i;
+                if(j >= timeslots){
+                    ultimo_tope = lines_exm - i; //?
                     j=1;
                 }else{
                     //ver si hay que usar bt o cbj
@@ -350,17 +350,17 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
 
         if(printear){
             printf("--------------------------------------------------------\n");
-            printf("soluciones = %d\n",soluciones);
+            printf("solucion = %d\n",soluciones);
             printf("%d %d\n",nodo->id_examen, nodo->timeslot);
             printf("%d %d\n",nodo->child->id_examen, nodo->child->timeslot);
             printf("%d %d\n",nodo->child->child->id_examen, nodo->child->child->timeslot);
             printf("%d %d\n",nodo->child->child->child->id_examen, nodo->child->child->child->timeslot);
             printf("%d %d\n",nodo->child->child->child->child->id_examen, nodo->child->child->child->child->timeslot);
-            printf("***********************************************************\n");
-            printf("%d %d %d %d\n",matriz_cbj[0]->id_examen,matriz_cbj[0]->id_examenes[0],matriz_cbj[0]->id_examenes[1],matriz_cbj[0]->id_examenes[2]);
-            printf("%d %d %d %d\n",matriz_cbj[1]->id_examen,matriz_cbj[1]->id_examenes[0],matriz_cbj[1]->id_examenes[1],matriz_cbj[1]->id_examenes[2]);
-            printf("%d %d %d %d\n",matriz_cbj[2]->id_examen,matriz_cbj[2]->id_examenes[0],matriz_cbj[2]->id_examenes[1],matriz_cbj[2]->id_examenes[2]);
-            printf("%d %d %d %d\n",matriz_cbj[3]->id_examen,matriz_cbj[3]->id_examenes[0],matriz_cbj[3]->id_examenes[1],matriz_cbj[3]->id_examenes[2]);
+            // printf("***********************************************************\n");
+            // printf("%d %d %d %d\n",matriz_cbj[0]->id_examen,matriz_cbj[0]->id_examenes[0],matriz_cbj[0]->id_examenes[1],matriz_cbj[0]->id_examenes[2]);
+            // printf("%d %d %d %d\n",matriz_cbj[1]->id_examen,matriz_cbj[1]->id_examenes[0],matriz_cbj[1]->id_examenes[1],matriz_cbj[1]->id_examenes[2]);
+            // printf("%d %d %d %d\n",matriz_cbj[2]->id_examen,matriz_cbj[2]->id_examenes[0],matriz_cbj[2]->id_examenes[1],matriz_cbj[2]->id_examenes[2]);
+            // printf("%d %d %d %d\n",matriz_cbj[3]->id_examen,matriz_cbj[3]->id_examenes[0],matriz_cbj[3]->id_examenes[1],matriz_cbj[3]->id_examenes[2]);
         }
 
         if(j == lines_exm) it = cant_saltos(nodo, lines_exm, 0);
@@ -381,8 +381,9 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
         for(k = 0 ; k< it ; k++){
             if(k == lines_exm-1){
                 // printf("SALI \n");
-                soluciones--;
+                // soluciones--;
                 flag = 0;
+                printf("CANTIDAD DE SOLUCIONES: %d\n",soluciones);
             }else{
                 j = backtracking(nodo);
                 // printf("j = %d\n",j);
@@ -391,7 +392,7 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
             }
         }
         // printf("(2) i,j = %d , %d\n", i, j);
-        if(soluciones == 5) break;
+        // if(soluciones == 40) break;
     }
 }
 
@@ -449,7 +450,7 @@ int main() {
 
     // printf("%d\n",tope_examenes(1, 2,matriz_stu,lines_stu));
 
-    grafo(matriz_orden, matriz_stu, matriz_cbj, lines_exm, lines_stu,1);
+    grafo(matriz_orden, matriz_stu, matriz_cbj, lines_exm, lines_stu,2,1);
     
     liberar_memoria(lines_exm,lines_stu,matriz_exm,matriz_stu);
     return 0;
