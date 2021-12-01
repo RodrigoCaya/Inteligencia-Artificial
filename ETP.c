@@ -260,8 +260,7 @@ int cant_saltos(struct Node *nodo, int timeslots, int contador){
             
         contador = contador + nodo->timeslot/timeslots;
         contador = contador*nodo->timeslot/timeslots;
-        printf("contador = %d\n",contador);
-       
+        // printf("contador = %d\n",contador);
         cant_saltos(nodo->child, timeslots, contador);
     }
 }
@@ -323,9 +322,17 @@ struct Orden** ordenar(struct Stu **matriz_stu, struct Exm **matriz_exm, struct 
     return matriz_orden;
 }
 
+void vaciar_conflicto(struct CBJ **matriz_cbj, int lines_exm){
+    int i,j;
+    for(i=0 ; i<lines_exm ; i++){
+        for(j=0 ; j<lines_exm ; j++){
+            matriz_cbj[i]->id_examenes[j] = 0;
+        }
+    }
+}
+
 void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **matriz_cbj, int lines_exm, int lines_stu, int timeslots, int printear){
     int i = 0, j, k, it, tope, cont, flag = 1, ultimo_tope = 0, soluciones = 0, look_back = 1, fallo = 0;
-    int xd = 0;
     struct Node *nodo = (struct Node *)malloc(sizeof(struct Node));
     j = 1;
     //inicializar nodo
@@ -335,7 +342,13 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
     while(flag){
         cont = 0;
         for(i ; i<lines_exm ; i++){
-            printf("(1) i,j = %d , %d\n",i,j);
+            if(i == 0){
+                look_back = 1;
+                vaciar_conflicto(matriz_cbj, lines_exm);
+                printf("matriz vaciada\n");
+                // printf("%d %d\n",matriz_cbj[0]->id_examen,matriz_cbj[0]->id_examenes[0]);
+            } 
+            // printf("(1) i,j = %d , %d\n",i,j);
             // printf("aaa\n");
             struct Node *nodo_aux = (struct Node *)malloc(sizeof(struct Node));
             nodo_aux->id_examen = matriz_orden[i]->id_examen;
@@ -350,36 +363,35 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
                     cont++;
                     // printf("cont = %d\n",cont);
                     if(cont == timeslots && look_back == 1){
-                        printf("FALLO\n");
+                        printf("SALTO CBJ\n");
                         // printf("id examen %d\n",nodo_aux->id_examen);
-                        printf("retorno cbj: %d\n",retorno_cbj(matriz_cbj,matriz_orden,lines_exm,nodo_aux->id_examen));
+                        // printf("retorno cbj: %d\n",retorno_cbj(matriz_cbj,matriz_orden,lines_exm,nodo_aux->id_examen));
                         fallo = lines_exm - retorno_cbj(matriz_cbj,matriz_orden,lines_exm,nodo_aux->id_examen) - 1;
-                        printf("fallo: %d\n",fallo);
+                        // printf("fallo: %d\n",fallo);
                         look_back = 0;
                     }
                 }
-                if(j > timeslots){
+                if(j > timeslots){ //arregla los valores que se pasan de timeslots
                     if(ultimo_tope < lines_exm - i){
                         ultimo_tope = lines_exm - i;
-                        printf("ultimo tope = %d\n",ultimo_tope);
+                        // printf("ultimo tope = %d\n",ultimo_tope);
                         j=1;
                     }
                 }else{
                     //ver si hay que usar bt o cbj
-                    printf("entree\n");
+                    // printf("entree\n");
                     // printf("nodo: %d\n", nodo_aux->id_examen);
 
                     // if(look_back){
                         // agregar_conf_cbj(matriz_cbj,lines_exm,nodo_aux->id_examen,tope);
                     // }else{
                     if(fallo == 0){
-                        printf("entree2\n");
+                        // printf("entree2\n");
                         backtracking(nodo);
                         i--;
                         j++;
 
                     }
-
                     // }
                 }
             }else{
@@ -389,7 +401,6 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
             }
         }
         // if(j == lines_exm) it++;
-        xd++;
         soluciones++;
 
         if(printear){
@@ -406,7 +417,7 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
         if(j >= timeslots){
             // printf("????\n");
             if(fallo != 0){
-                printf("fallllloooooo\n");
+                // printf("fallllloooooo\n");
                 it = fallo;
                 soluciones--;
                 // fallo = 0;
@@ -414,8 +425,7 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
             // else 
             // flag = 0;
             else{
-                printf("entree3\n");
-
+                // printf("entree3\n");
                 it = cant_saltos(nodo, timeslots, 0);
 
             }
@@ -434,7 +444,7 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
             else fallo = 0;
         }
         // } 
-        printf("it = %d \n",it);
+        // printf("it = %d \n",it);
         // break;
         backtracking(nodo);
         i--;
@@ -450,12 +460,11 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
                 // printf("j = %d\n",j);
                 i--;
                 j++;
-                printf("i = %d\n",i);
+                // printf("i = %d\n",i);
             }
         }
         // printf("(2) i,j = %d , %d\n", i, j);
         // if(soluciones == 2) break;
-        if(xd == 11) break;
     }
 }
 
@@ -534,10 +543,11 @@ int main() {
         //hacer una funcion que te devuelva una lista con todos los estudiantes CHECK
         //lista de conflictos CHECK
     //-backtracking CHECK
-    //-CBJ
+    //-CBJ CHECK
         //-crear matriz de CBJ CHECK
-        //-crear un caso de prueba con fallo
-        //-probar la matriz de CBJ
+        //-crear un caso de prueba con fallo CHECK
+        //-probar la matriz de CBJ CHECK
+    //-Penalización promedio por estudiante
     //-output
 
 }
