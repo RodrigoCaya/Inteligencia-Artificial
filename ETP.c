@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 struct Exm {
    int   id_examen;
@@ -32,6 +33,11 @@ struct Node {
     int id_examen;
     struct Node* child;
     struct Node* parent;
+};
+
+struct Result {
+    int timeslot;
+    int id_examen;
 };
 
 int largo_archivo(char* path){
@@ -69,6 +75,24 @@ struct Exm** leer_exm(char* path, int *lines_exm){
     // printf("%d %d\n",matriz_exm[1]->id_examen,matriz_exm[1]->cant_alumnos);
     // printf("%d %d\n",matriz_exm[2]->id_examen,matriz_exm[2]->cant_alumnos);
     return matriz_exm;
+}
+
+void output(int timeslots, float penalizacion, struct Result **resultado_final, int lines_exm){
+    int i;
+    FILE *fp_timeslots;
+    FILE *fp_penalizacion;
+    FILE *fp_solucion;
+    fp_timeslots = fopen("PROBLEM.res", "w");
+    fp_penalizacion = fopen("PENALIZACION.pen", "w");
+    fp_solucion = fopen("SOLUCION.sol", "w");
+    fprintf(fp_timeslots, "%d", timeslots);
+    fprintf(fp_penalizacion, "%f", penalizacion);
+    for(i = 0; i < lines_exm; i++){
+        fprintf(fp_solucion, "%d %d\n", resultado_final[i]->id_examen, resultado_final[i]->timeslot);
+    }
+    fclose(fp_timeslots);
+    fclose(fp_penalizacion);
+    fclose(fp_solucion);
 }
 
 struct Stu** leer_stu(char* path, int *lines_stu){
@@ -230,7 +254,7 @@ void insertar(struct Node *nodo, struct Node *nodo_aux){
 int backtracking(struct Node *nodo){
     if(nodo->child == NULL){
         int timeslott = nodo->timeslot;
-        printf("nodo borrado\n");
+        // printf("nodo borrado\n");
         nodo->parent = NULL;
         free(nodo);
         return timeslott;
@@ -238,7 +262,7 @@ int backtracking(struct Node *nodo){
     else{
         if(nodo->child->child == NULL){
             int timeslott = nodo->child->timeslot;
-            printf("nodo hijo borrado\n");
+            // printf("nodo hijo borrado\n");
             nodo->child->parent = NULL;
             free(nodo->child);
             nodo->child = NULL;
@@ -311,14 +335,18 @@ int retorno_cbj(struct CBJ **matriz_cbj, struct Orden **matriz_orden, int lines_
     }
 }
 
-struct Orden** ordenar(struct Stu **matriz_stu, struct Exm **matriz_exm, struct Conf **matriz_conf, struct Orden **matriz_orden, char **arreglo_solo_stu, int lines_stu, int lines_exm, int cant_alumnos, int tipo_orden){
+struct Orden** ordenar(struct Stu **matriz_stu, struct Exm **matriz_exm, struct Conf **matriz_conf, struct Orden **matriz_orden, char ***arreglo_solo_stu, int lines_stu, int lines_exm, int *cant_alumnos, int tipo_orden){
     matriz_orden = examenes(matriz_exm,lines_exm);
+    int cant_al;
+    char **arreglo_solo_student;
+    arreglo_solo_student = estudiantes(matriz_stu, lines_stu, &cant_al);
     if(tipo_orden == 1){
-        arreglo_solo_stu = estudiantes(matriz_stu, lines_stu, &cant_alumnos);
-        matriz_conf = conflicto(matriz_stu, lines_stu, arreglo_solo_stu, cant_alumnos);
-        agregar_conflicto(matriz_orden, matriz_conf, matriz_stu, lines_exm, cant_alumnos, lines_stu);
+        matriz_conf = conflicto(matriz_stu, lines_stu, *arreglo_solo_stu, cant_al);
+        agregar_conflicto(matriz_orden, matriz_conf, matriz_stu, lines_exm, cant_al, lines_stu);
         sort_inverse(matriz_orden, lines_exm);
     }
+    *cant_alumnos = cant_al;
+    *arreglo_solo_stu = arreglo_solo_student;
     return matriz_orden;
 }
 
@@ -331,9 +359,84 @@ void vaciar_conflicto(struct CBJ **matriz_cbj, int lines_exm){
     }
 }
 
-void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **matriz_cbj, int lines_exm, int lines_stu, int timeslots, int printear){
-    int i = 0, j, k, it, tope, cont, flag = 1, ultimo_tope = 0, soluciones = 0, look_back = 1, fallo = 0;
+void agregar_solucion_aux(struct Result **resultado, struct Node *nodo, int i){
+    struct Result *arreglo_resultado = (struct Result *)malloc(sizeof(struct Result));
+    arreglo_resultado->id_examen = nodo->id_examen;
+    arreglo_resultado->timeslot = nodo->timeslot;
+    resultado[i] = arreglo_resultado;
+    // printf("here\n");
+    if(nodo->child == NULL){
+        return;
+    }
+    agregar_solucion_aux(resultado, nodo->child, i+1);
+}
+
+void agregar_solucion(struct Result ***matriz_resultado, struct Node *nodo, int lines_exm, int soluciones){
+    struct Result **resultado = (struct Result **)malloc(lines_exm * sizeof(struct Result*));
+    agregar_solucion_aux(resultado, nodo, 0);
+    matriz_resultado[soluciones-1] = resultado;
+}
+
+void borrar_ultima_solucion(struct Result ***matriz_resultado, int soluciones){
+    free(matriz_resultado[soluciones]);
+    matriz_resultado[soluciones] = NULL;
+}
+
+struct Result*** cantidad_timeslots(struct Result ***matriz_resultado, int lines_exm, int* soluciones_totales, int* minimo, int printear){
+    if(printear) printf("Filtrando las soluciones con menor cantidad de timeslots\n");
+    // printf("\n\n\n");
+    struct Result ***matriz_resultado_final = (struct Result ***)malloc(*soluciones_totales * sizeof(struct Result**));
+    int h, i, j, cont, flag, contador = 0, min = lines_exm;
+    for(h=0 ; h<(*soluciones_totales) ; h++){
+        int *timeslots = (int*)malloc(sizeof(int)*lines_exm);
+        timeslots[0] = matriz_resultado[h][0]->timeslot;
+        cont = 1;
+        for(i=0 ; i<lines_exm ; i++){
+            flag = 0;
+            for(j=0 ; j<cont ; j++){
+                if(matriz_resultado[h][i]->timeslot == timeslots[j]){
+                    flag = 1;
+                }
+            }
+            if(flag == 0){
+                timeslots[cont] = matriz_resultado[h][i]->timeslot;
+                cont++;
+            }
+        }
+        if(cont < min){
+            contador = 0;
+            min = cont;
+            matriz_resultado_final[contador] = matriz_resultado[h];
+            // for(int b = 0 ; b<5 ; b++){
+            //     printf("%d %d\n",matriz_resultado_final[contador][b]->id_examen,matriz_resultado_final[contador][b]->timeslot);
+            // }
+            // printf("----------------------------------------------------\n");
+            contador++;
+        }
+        else if(cont == min){
+            matriz_resultado_final[contador] = matriz_resultado[h];
+            contador++;
+        }
+    }
+    *soluciones_totales = contador;
+    *minimo = min;
+    // printf("Cantidad de soluciones con menor cantidad de timeslots: %d\n", contador);
+    // for(int b = 0 ; b<5 ; b++){
+    //         printf("%d %d\n",matriz_resultado_final[0][b]->id_examen,matriz_resultado_final[0][b]->timeslot);
+    // }
+    // for(int b = 0 ; b<5 ; b++){
+    //         printf("%d %d\n",matriz_resultado_final[1][b]->id_examen,matriz_resultado_final[1][b]->timeslot);
+    // }
+    return matriz_resultado_final;
+}
+
+struct Result*** grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **matriz_cbj, int lines_exm, int lines_stu, int *soluciones_totales, int timeslots, int printear){
+    int i = 0, j, k, it, tope, cont, flag = 1, ultimo_tope = 0, soluciones = 0, look_back = 1, fallo = 0, num_solucion = 0;
     struct Node *nodo = (struct Node *)malloc(sizeof(struct Node));
+    double a = (double)timeslots;
+    double b = (double)lines_exm;
+    double cantidad_maxima_soluciones = pow(a,b);
+    struct Result ***matriz_resultado = (struct Result ***)malloc( cantidad_maxima_soluciones * sizeof(struct Result**));
     j = 1;
     //inicializar nodo
     nodo->id_examen = 0;
@@ -345,7 +448,7 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
             if(i == 0){
                 look_back = 1;
                 vaciar_conflicto(matriz_cbj, lines_exm);
-                printf("matriz vaciada\n");
+                // printf("matriz vaciada\n");
                 // printf("%d %d\n",matriz_cbj[0]->id_examen,matriz_cbj[0]->id_examenes[0]);
             } 
             // printf("(1) i,j = %d , %d\n",i,j);
@@ -402,6 +505,8 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
         }
         // if(j == lines_exm) it++;
         soluciones++;
+
+        agregar_solucion(matriz_resultado,nodo->child,lines_exm,soluciones);
 
         if(printear){
             printf("--------------------------------------------------------\n");
@@ -466,6 +571,76 @@ void grafo(struct Orden **matriz_orden, struct Stu **matriz_stu, struct CBJ **ma
         // printf("(2) i,j = %d , %d\n", i, j);
         // if(soluciones == 2) break;
     }
+    borrar_ultima_solucion(matriz_resultado,soluciones);
+    // printf("CANTIDAD DE SOLUCIONES: %d\n",soluciones);
+    *soluciones_totales = soluciones;
+    return matriz_resultado;
+}
+
+int costo_asociado(int resta){
+    if(resta == 1) return 16;
+    if(resta == 2) return 8;
+    if(resta == 3) return 4;
+    if(resta == 4) return 2;
+    if(resta == 5) return 1;
+    return 0;
+}
+
+int calculo(struct Result **resultado, struct Stu **matriz_stu, int lines_stu, int lines_exm, char *estudiante){
+    int i, j, k, resta, timeslot1, timeslot2, id_examen1, id_examen2 = 0, penalizacion = 0;
+    for(i = 0 ; i<lines_stu ; i++){
+        if(strcmp(matriz_stu[i]->id_estudiante,estudiante) == 0){
+            id_examen1 = matriz_stu[i]->id_examen;
+            // printf("id_examen1 = %d\n",id_examen1);
+            for(j = i ; j<lines_stu ; j++){
+                if(strcmp(matriz_stu[j]->id_estudiante,estudiante) == 0 && matriz_stu[j]->id_examen != id_examen1){
+                    id_examen2 = matriz_stu[j]->id_examen;
+                    // printf("id_examen2 = %d\n",id_examen2);
+                    for(k = 0 ; k<lines_exm ; k++){
+                        if(resultado[k]->id_examen == id_examen1){
+                            timeslot1 = resultado[k]->timeslot;
+                        }
+                        if(resultado[k]->id_examen == id_examen2){
+                        // printf("here\n");
+                            timeslot2 = resultado[k]->timeslot;
+                        }
+                    }
+                    // printf("%d %d\n",timeslot1,timeslot2);
+                    // printf("%d %d\n",id_examen1,id_examen2);
+                    resta = abs(timeslot2 - timeslot1);
+                    penalizacion += costo_asociado(resta);
+                    i = j;
+                    id_examen1 = id_examen2;
+                    break;
+                }
+            }
+            if(id_examen2 == 0) return 0;
+        }
+    }
+    return penalizacion;
+}
+
+struct Result** penalizacion_promedio_estudiante(struct Result ***matriz_resultado, struct Stu **matriz_stu, char **arreglo_solo_stu, int lines_stu, int lines_exm, int soluciones_totales, int cant_alumnos, float *pp_estudiantes){
+    int i,j,penalizacion;
+    float pp_estudiante = 99999;
+    struct Result **resultado = (struct Result **)malloc(lines_exm * sizeof(struct Result*));
+    // printf("%d %d \n",soluciones_totales,cant_alumnos);
+    for(i=0 ; i<soluciones_totales ; i++){
+        penalizacion = 0;
+        for(j=0 ; j<cant_alumnos ; j++){
+            // printf("estudiante : %s\n",arreglo_solo_stu[j]);
+            // matriz_resultado[i];
+            // calculo(matriz_resultado[i], matriz_stu, lines_stu, soluciones_totales, arreglo_solo_stu[j]);
+            penalizacion = penalizacion + calculo(matriz_resultado[i], matriz_stu, lines_stu, lines_exm, arreglo_solo_stu[j]);
+        }
+        // printf("-----------------------------------------------------\n");
+        if(penalizacion < pp_estudiante){
+            pp_estudiante = penalizacion;
+            resultado = matriz_resultado[i];
+        }
+    }
+    *pp_estudiantes = pp_estudiante/cant_alumnos;
+    return resultado;
 }
 
 void liberar_memoria(int lines_exm, int lines_stu, struct Exm **matriz_exm, struct Stu **matriz_stu){
@@ -482,33 +657,67 @@ void liberar_memoria(int lines_exm, int lines_stu, struct Exm **matriz_exm, stru
 }
 
 int main() {
-    int lines_exm, lines_stu, cant_alumnos;
+    int lines_exm, lines_stu, cant_alumnos,soluciones_totales,timeslot_minimo;
+    float pp_estudiantes;
     struct Exm **matriz_exm;
     struct Stu **matriz_stu;
     struct Conf **matriz_conf;
     struct Orden **matriz_orden;
     struct CBJ **matriz_cbj;
+    struct Result ***matriz_resultado;
+    struct Result **resultado_final;
     char **arreglo_solo_stu;
 
     //-------------------inputs del usuario-------------------
+    // char exm[] = "ejemplo5.exm";
+    // char stu[] = "ejemplo5.stu";
+    char exm[100];
+    char stu[100];
+    int decision;
+    // int cant_timeslots = 3;
+    int cant_timeslots;
+    // int tipo_orden = 0; //0 = sin orden, 1 = más conflicto primero
+    int tipo_orden;
+    // int printear_pasos = 0; //0 = no, 1 = si
+    int printear_pasos;
 
-    char exm[] = "ejemplo5.exm";
-    char stu[] = "ejemplo5.stu";
-    int cant_timeslots = 2;
-    int tipo_orden = 0; //0 = sin orden, 1 = más conflicto primero
-    int printear_pasos = 1; //0 = no, 1 = si
+    printf("Ingrese el nombre del archivo de examenes: ");
+    scanf("%s", exm);
+    printf("Ingrese el nombre del archivo de estudiantes: ");
+    scanf("%s", stu);
+    matriz_exm = leer_exm(exm, &lines_exm);
+    matriz_stu = leer_stu(stu, &lines_stu);
+    printf("¿Desea ingresar la cantidad máxima de timeslots? (0) no (1) si: ");
+    scanf("%d", &decision);
+    if(decision == 1){
+        printf("Ingrese la cantidad de timeslots: ");
+        scanf("%d", &cant_timeslots);
+    }
+    else{
+        cant_timeslots = lines_exm;
+    }
+    printf("¿Desea tener un orden de instanciación? (0) sin orden (1) más conflictivo primero: ");
+    scanf("%d", &tipo_orden);
+    printf("[Debug]¿Desea imprimir el paso a paso para encontrar la solución? (0) no (1) si: ");
+    scanf("%d", &printear_pasos);
+
+
+    // return 0;
+    
 
     //--------------------------------------------------------
 
-    matriz_exm = leer_exm(exm, &lines_exm);
-    matriz_stu = leer_stu(stu, &lines_stu);
+    
     
     // arreglo_solo_stu = estudiantes(matriz_stu, lines_stu, &cant_alumnos);
     // matriz_conf = conflicto(matriz_stu, lines_stu, arreglo_solo_stu, cant_alumnos);
     // matriz_orden = examenes(matriz_exm,lines_exm);
     // agregar_conflicto(matriz_orden, matriz_conf, matriz_stu, lines_exm, cant_alumnos, lines_stu);
     // sort_inverse(matriz_orden, lines_exm);
-    matriz_orden = ordenar(matriz_stu,matriz_exm,matriz_conf,matriz_orden,arreglo_solo_stu,lines_stu,lines_exm,cant_alumnos,tipo_orden);
+    matriz_orden = ordenar(matriz_stu,matriz_exm,matriz_conf,matriz_orden,&arreglo_solo_stu,lines_stu,lines_exm,&cant_alumnos,tipo_orden);
+
+    // printf("%d\n",cant_alumnos);
+    // printf("%s\n",arreglo_solo_stu[0]);
 
     matriz_cbj = crear_conf_cbj(matriz_exm, lines_exm);
     // printf("%d %d %d %d\n",matriz_cbj[0]->id_examen,matriz_cbj[0]->id_examenes[0],matriz_cbj[0]->id_examenes[1],matriz_cbj[0]->id_examenes[2]);
@@ -516,10 +725,10 @@ int main() {
     // printf("%d %d %d %d\n",matriz_cbj[2]->id_examen,matriz_cbj[2]->id_examenes[0],matriz_cbj[2]->id_examenes[1],matriz_cbj[2]->id_examenes[2]);
     // printf("%d %d %d %d\n",matriz_cbj[3]->id_examen,matriz_cbj[3]->id_examenes[0],matriz_cbj[3]->id_examenes[1],matriz_cbj[3]->id_examenes[2]);
     
-    printf("%d %d\n",matriz_orden[0]->id_examen,matriz_orden[0]->cant_conflictos);
-    printf("%d %d\n",matriz_orden[1]->id_examen,matriz_orden[1]->cant_conflictos);
-    printf("%d %d\n",matriz_orden[2]->id_examen,matriz_orden[2]->cant_conflictos);
-    printf("%d %d\n",matriz_orden[3]->id_examen,matriz_orden[3]->cant_conflictos);
+    // printf("%d %d\n",matriz_orden[0]->id_examen,matriz_orden[0]->cant_conflictos);
+    // printf("%d %d\n",matriz_orden[1]->id_examen,matriz_orden[1]->cant_conflictos);
+    // printf("%d %d\n",matriz_orden[2]->id_examen,matriz_orden[2]->cant_conflictos);
+    // printf("%d %d\n",matriz_orden[3]->id_examen,matriz_orden[3]->cant_conflictos);
     
 
 
@@ -532,8 +741,27 @@ int main() {
     // printf("%s %d\n",matriz_conf[6]->id_estudiante,matriz_conf[6]->cant_conflictos);
 
     // printf("%d\n",tope_examenes(1, 2,matriz_stu,lines_stu));
+    matriz_resultado = grafo(matriz_orden, matriz_stu, matriz_cbj, lines_exm, lines_stu,&soluciones_totales,cant_timeslots,printear_pasos);
+    for(int a = 0 ; a<7 ; a++){
+        // printf("cantidad: %d\n",cantidad_timeslots(matriz_resultado[a],lines_exm,printear_pasos));
+        for(int b = 0 ; b<5 ; b++){
+            printf("%d %d\n",matriz_resultado[a][b]->id_examen,matriz_resultado[a][b]->timeslot);
+        }
+        printf("----------------------------------------------------\n");
+    }
+    
+    // printf("%d\n",soluciones_totales);
+    if(decision == 0) matriz_resultado = cantidad_timeslots(matriz_resultado,lines_exm,&soluciones_totales,&cant_timeslots,printear_pasos);
+    resultado_final = penalizacion_promedio_estudiante(matriz_resultado,matriz_stu,arreglo_solo_stu,lines_stu,lines_exm,soluciones_totales,cant_alumnos,&pp_estudiantes);
 
-    grafo(matriz_orden, matriz_stu, matriz_cbj, lines_exm, lines_stu,cant_timeslots,printear_pasos);
+    // printf("%f\n",pp_estudiantes);
+    // printf("%d %d \n",resultado_final[0]->id_examen,resultado_final[0]->timeslot);
+    // printf("%d %d \n",resultado_final[1]->id_examen,resultado_final[1]->timeslot);
+    // printf("%d %d \n",resultado_final[2]->id_examen,resultado_final[2]->timeslot);
+    // printf("%d %d \n",resultado_final[3]->id_examen,resultado_final[3]->timeslot);
+    // printf("%d %d \n",resultado_final[4]->id_examen,resultado_final[4]->timeslot);
+
+    output(cant_timeslots,pp_estudiantes,resultado_final,lines_exm);
     
     liberar_memoria(lines_exm,lines_stu,matriz_exm,matriz_stu);
     return 0;
@@ -547,9 +775,15 @@ int main() {
         //-crear matriz de CBJ CHECK
         //-crear un caso de prueba con fallo CHECK
         //-probar la matriz de CBJ CHECK
-    //-Penalización promedio por estudiante
-    //-output
+    //hacer una arreglo con las soluciones CHECK
+    //-Penalización promedio por estudiante CHECK
+        //-crear una funcion que calcule la penalización por solución CHECK
+        //-escoger la solución que calcule la penalización más baja CHECK
+    //-output CHECK
+        //-crear una funcion que escriba el output CHECK
+        //-probar el output CHECK
 
 }
 //sudo apt-get install build-essential
 //gcc ETP.c -o etp
+//gcc -o etp ETP.c -lm
